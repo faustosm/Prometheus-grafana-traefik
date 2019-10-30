@@ -1,0 +1,32 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: traefik-dashboard-service
+  namespace: $NAMESPACE
+spec:
+  selector:
+    app: traefik-ingress
+  ports:
+  - name: dashboard
+    port: 8080
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: traefik-lb-service
+  namespace: $NAMESPACE
+  labels:
+    app: traefik-ingress
+spec:
+  selector:
+    app: traefik-ingress
+  externalTrafficPolicy: Local
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+  - name: https
+    protocol: TCP
+    port: 443
+  type: LoadBalancer
