@@ -1,0 +1,213 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik-ingress-controller
+  namespace: monitoramento
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  namespace: monitoramento
+  name: traefik-ingress-controller
+  labels:
+    app.kubernetes.io/name: traefik-ingress
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+    - extensions
+    resources:
+    - ingresses/status
+    verbs:
+    - update
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  namespace: monitoramento
+  name: traefik-ingress-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-ingress-controller
+subjects:
+- kind: ServiceAccount
+  name: traefik-ingress-controller
+  namespace: monitoramento
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-configmap
+  namespace: monitoramento
+data:
+  traefik.toml: |
+    defaultEntryPoints = ["http","https"]
+    debug = false
+    logLevel = "INFO"
+
+    # Do not verify backend certificates (use https backends)
+    InsecureSkipVerify = true
+
+    [entryPoints]
+      [entryPoints.http]
+      address = ":80"
+      compress = true
+      [entryPoints.https]
+      address = ":443"
+        [entryPoints.https.tls]
+      
+
+    [api]
+      dashboard = true
+      debug = false
+      [api.statistics]
+        recentErrors = 10
+
+    [kubernetes]
+      [kubernetes.ingressEndpoint]
+        publishedService = "monitoramento/traefik-lb-service"
+
+    [metrics]
+      [metrics.prometheus]
+      buckets=[0.1,0.3,1.2,5.0]
+      entryPoint = "traefik"
+    [ping]
+    entryPoint = "http"
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: traefik-dashboard-service
+  namespace: monitoramento
+spec:
+  selector:
+    app: traefik-ingress
+  ports:
+  - name: dashboard
+    port: 8080
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: traefik-lb-service
+  namespace: monitoramento
+  labels:
+    app: traefik-ingress
+spec:
+  selector:
+    app: traefik-ingress
+  externalTrafficPolicy: Local
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+  - name: https
+    protocol: TCP
+    port: 443
+  type: LoadBalancer
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: traefik-ingress-controller
+  namespace: monitoramento
+  labels:
+    app: traefik-ingress
+spec:
+  replicas: 3
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: traefik-ingress
+  template:
+    metadata:
+      labels:
+        app: traefik-ingress
+        name: traefik-ingress
+    spec:
+      serviceAccountName: traefik-ingress-controller
+      terminationGracePeriodSeconds: 60
+      containers:
+      - image: traefik:v1.7
+        name: traefik-ingress
+        volumeMounts:
+        - mountPath: /config
+          name: traefik-config
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        - name: dashboard
+          containerPort: 8080
+        args:
+        - --configfile=/config/traefik.toml
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 3
+          timeoutSeconds: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - traefik-ingress
+              topologyKey: kubernetes.io/hostname
+      volumes:
+      - name: traefik-config
+        configMap:
+          name: traefik-configmap
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: traefik-dashboard-ingress
+  namespace: monitoramento
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+    traefik.ingress.kubernetes.io/redirect-entry-point: "https"
+    traefik.ingress.kubernetes.io/redirect-permanent: "true"
+    certmanager.k8s.io/cluster-issuer: "acme-letsencrypt-production"  
+spec:
+  rules:
+  - host: "cloudopss.com"
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/bar"
+        backend:
+          service:
+            name: cloudopss-grafana
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - hostname
+    secretName: secretname

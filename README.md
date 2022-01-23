@@ -37,11 +37,11 @@ Use the `base64` command to base64-encode a secure Grafana password of your choo
 export GRAFANA_GENERATED_PASSWORD="$(echo -n 'your_grafana_password' | base64)"
 ```
 
-Now, use `awk` and `envsubst` to fill in the `APP_INSTANCE_NAME`, `NAMESPACE`, and `GRAFANA_GENERATED_PASSWORD` variables in the repo's manifest files. After substituting in the variable values, the files will be combined into a master manifest file called `$APP_INSTANCE_NAME_manifest.yaml`.
+Now, use `awk` and `envsubst` to fill in the `APP_INSTANCE_NAME`, `NAMESPACE`, and `GRAFANA_GENERATED_PASSWORD` variables in the repo's manifest files. After substituting in the variable values, the files will be combined into a master manifest file called `cloudopss_manifest.yaml`.
 
 ```shell
 awk 'FNR==1 {print "---"}{print}' manifest/* \
- | envsubst '$APP_INSTANCE_NAME $NAMESPACE $GRAFANA_GENERATED_PASSWORD' \
+ | envsubst 'cloudopss $NAMESPACE $GRAFANA_GENERATED_PASSWORD' \
  > "${APP_INSTANCE_NAME}_manifest.yaml"
 ```
 
@@ -62,7 +62,7 @@ Once the stack is up and running, you can access Grafana by either patching the 
 To create a LoadBalancer Service for Grafana, use `kubectl patch` to update the existing Grafana Service in-place:
 
 ```shell
-kubectl patch svc "$APP_INSTANCE_NAME-grafana" \
+kubectl patch svc "cloudopss-grafana" \
   --namespace "$NAMESPACE" \
   -p '{"spec": {"type": "LoadBalancer"}}'
 ```
@@ -70,7 +70,7 @@ kubectl patch svc "$APP_INSTANCE_NAME-grafana" \
 Once the DigitalOcean Load Balancer has been created and assigned an external IP address, you can fetch this external IP using the following commands:
 
 ```shell
-SERVICE_IP=$(kubectl get svc $APP_INSTANCE_NAME-grafana \
+SERVICE_IP=$(kubectl get svc cloudopss-grafana \
   --namespace $NAMESPACE \
   --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "http://${SERVICE_IP}/"
