@@ -1,5 +1,5 @@
 # Prometheus and Grafana on Digital Ocean
-#
+
 ### Features
 - **[Prometheus](https://prometheus.io/)**
 - **[Alertmanager](https://github.com/prometheus/alertmanager)**
